@@ -11,6 +11,7 @@
   #map { position:absolute; top:0; left:0; right:0; bottom:0; transition:left .22s ease; }
   #epochSelector { position:absolute; top:10px; right:10px; z-index:1500; background:white; padding:6px 12px; border-radius:6px; border:1px solid #ccc; }
   #steppeToggle { position:absolute; top:50px; right:10px; z-index:1500; background:#fff; padding:6px 10px; border-radius:6px; border:1px solid #ccc; cursor:pointer; }
+  #steppeToggle:disabled { opacity:0.55; cursor:not-allowed; }
   #diagnostics { position:absolute; bottom:10px; right:10px; z-index:1500; background:white; padding:6px 12px; border-radius:6px; border:1px solid #ccc; font-size:12px; max-width:320px; }
 
   /* Сравнение эпох */
@@ -155,6 +156,9 @@ const cityCoordsByEpoch = {
 };
 
 const cityBasenames = { "Уральск":"Uralsk","Оренбург":"Orenburg","Алматы":"Almaty","Павлодар":"Pavlodar","Семипалатинск":"Semipalatinsk","Кызылорда":"Kyzylorda","Усть-Каменогорск":"UstKamenogorsk","Дарьинск":"Daryinsk","Пресновка":"Presnovka","Астана":"Astana","Кокшетау":"Kokshetau","Баянаул":"Bayanaul" };
+
+const epochTitles = { xix:"XIX век", xx:"XX век", modern:"XXI век" };
+function getEpochTitle(epoch){ return epochTitles[epoch] || epoch; }
 function getCityImagePath(city, epoch) {
   const suffix = epoch === "xix" ? "xix" : (epoch === "xx" ? "xx" : "xxi");
   const base = cityBasenames[city] || city.replace(/\s+/g,'');
@@ -174,18 +178,24 @@ const map = L.map("map", { center:[48,70], zoom:5, layers:[] });
 let currentBaseLayer = null;
 const markersLayer = L.layerGroup().addTo(map);
 
+const diagnosticsEl = document.getElementById("diagnostics");
+function setDiagnostics(text){
+  if(diagnosticsEl) diagnosticsEl.innerText = `Диагностика: ${text}`;
+}
+setDiagnostics("загрузка XIX карты…");
+
 /* Прелоад XIX-растра */
 (function initBase(){
   const img = new Image();
   img.onload = () => {
     currentBaseLayer = xixLayer; xixLayer.addTo(map);
     try{ map.fitBounds(xixBounds); } catch(e){ map.setView([48,70],5); }
-    document.getElementById('diagnostics').innerText = "Диагностика: карта XIX загружена (map1851.jpg)";
+    setDiagnostics("карта XIX загружена (map1851.jpg)");
   };
   img.onerror = () => {
     currentBaseLayer = modernLayer; modernLayer.addTo(map);
     map.setView([48,70],5);
-    document.getElementById('diagnostics').innerText = "Диагностика: не найден images/map1851.jpg — показана подложка OSM";
+    setDiagnostics("не найден images/map1851.jpg — показана подложка OSM");
   };
   img.src = "images/map1851.jpg";
 })();
@@ -325,8 +335,9 @@ document.getElementById("epochSelector").addEventListener("change", function(e){
 
   addCities(val);
   updatePoetsPanelLabel();
-  document.getElementById("diagnostics").innerText = "Диагностика: карта " + val + " активна";
+  setDiagnostics(`карта ${getEpochTitle(val)} активна`);
 
+  updateSteppeToggleState(val);
   if(steppeVisible){ showSteppeForCurrentEpoch(); }
   refreshCompareOptions(); // обновим варианты для сравнения
   applyOpacity();          // сохранить прозрачность в новом состоянии
@@ -335,7 +346,11 @@ document.getElementById("epochSelector").addEventListener("change", function(e){
 /* ====== Панель «Поэты ... века» ====== */
 const poetsPanelBtn = document.getElementById("poetsPanelBtn");
 const poetsListPopup = document.getElementById("poetsListPopup");
-function updatePoetsPanelLabel(){ const epoch = document.getElementById("epochSelector").value; const label = epoch === "xix" ? "19" : (epoch === "xx" ? "20" : "21"); poetsPanelBtn.innerText = `Поэты ${label} века`; }
+function updatePoetsPanelLabel(){
+  const epoch = document.getElementById("epochSelector").value;
+  const title = getEpochTitle(epoch).replace(" век"," века");
+  poetsPanelBtn.innerText = `Поэты ${title}`;
+}
 function buildPoetsList(){
   const epoch = document.getElementById("epochSelector").value;
   const epochData = poetsByEpoch[epoch] || {};
@@ -470,28 +485,53 @@ function onSteppeClick(polygon, epoch){
   });
 }
 const steppeToggleBtn = document.getElementById("steppeToggle");
+function updateSteppeToggleState(epoch){
+  const isXX = epoch === 'xx';
+  steppeToggleBtn.disabled = !isXX;
+  steppeToggleBtn.title = isXX ? 'Показать границы степей XX века' : 'Степи доступны только на карте XX века (1939 г.)';
+  if(!isXX && steppeVisible){
+    hideSteppe();
+    steppeVisible = false;
+  }
+  if(!isXX){
+    steppeToggleBtn.innerText = "Показать степи";
+  } else {
+    steppeToggleBtn.innerText = steppeVisible ? "Скрыть степи" : "Показать степи";
+  }
+}
 steppeToggleBtn.onclick = function(){
+  if(steppeToggleBtn.disabled) return;
   const epoch = document.getElementById("epochSelector").value;
   if(epoch !== 'xx'){
     alert('Степи доступны только на карте XX века (1939 г.). Переключите эпоху.');
     return;
   }
   steppeVisible = !steppeVisible;
-  steppeToggleBtn.innerText = steppeVisible ? "Скрыть степи" : "Показать степи";
   if(steppeVisible) showSteppeForCurrentEpoch();
   else hideSteppe();
+  updateSteppeToggleState(epoch);
 };
+updateSteppeToggleState(document.getElementById("epochSelector").value);
 function showSteppeForCurrentEpoch(){
   steppeLayerGroup.clearLayers();
   const epoch = document.getElementById("epochSelector").value;
   const poly = buildSteppeForEpoch(epoch);
-  if(poly){
-    steppeLayerGroup.addLayer(poly);
+  if(!poly){
+    hideSteppe();
+    return;
+  }
+  if(!map.hasLayer(steppeLayerGroup)){
     steppeLayerGroup.addTo(map);
-    try{ map.fitBounds(poly.getBounds(), {padding:[30,30]}); }catch(e){}
+  }
+  steppeLayerGroup.addLayer(poly);
+  try{ map.fitBounds(poly.getBounds(), {padding:[30,30]}); }catch(e){}
+}
+function hideSteppe(){
+  if(steppeLayerGroup){
+    steppeLayerGroup.clearLayers();
+    if(map.hasLayer(steppeLayerGroup)) map.removeLayer(steppeLayerGroup);
   }
 }
-function hideSteppe(){ if(steppeLayerGroup) map.removeLayer(steppeLayerGroup); }
 
 /* ======================================================================
    РЕЖИМ «СРАВНЕНИЕ ЭПОХ»
@@ -520,10 +560,10 @@ function getNewLayerForEpoch(ep){
 function refreshCompareOptions(){
   const cur = getCurrentEpoch();
   const opts = otherEpochs(cur);
-  overlayEpochSel.innerHTML = opts.map(o => {
-    const title = o==='xix'?'XIX век':(o==='xx'?'XX век':'XXI век');
-    return `<option value="${o}">${title}</option>`;
-  }).join('');
+  overlayEpochSel.innerHTML = opts.map(o => `<option value="${o}">${getEpochTitle(o)}</option>`).join('');
+  if(opts.length){
+    overlayEpochSel.value = opts[0];
+  }
 }
 
 function enableCompare(){
@@ -533,7 +573,12 @@ function enableCompare(){
   refreshCompareOptions();
 
   // Создаём верхний слой (overlay) как «другую эпоху»
-  const chosen = overlayEpochSel.value;
+  const chosen = overlayEpochSel.value || otherEpochs(getCurrentEpoch())[0];
+  if(!chosen){
+    compareActive = false;
+    comparePanel.style.display = 'none';
+    return;
+  }
   if(overlayLayer) { try{ map.removeLayer(overlayLayer); }catch(e){} overlayLayer = null; }
   overlayLayer = getNewLayerForEpoch(chosen);
   overlayLayer.addTo(map); // верхний слой
@@ -566,6 +611,7 @@ function applyOpacity(){
 overlayEpochSel && overlayEpochSel.addEventListener('change', ()=>{
   if(!compareActive) return;
   const chosen = overlayEpochSel.value;
+  if(!chosen) return;
   if(overlayLayer){ try{ map.removeLayer(overlayLayer); }catch(e){} overlayLayer = null; }
   overlayLayer = getNewLayerForEpoch(chosen);
   overlayLayer.addTo(map);
