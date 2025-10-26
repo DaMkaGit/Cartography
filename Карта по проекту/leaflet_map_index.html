@@ -596,6 +596,12 @@ function applyOpacity(){
   const val = Number(opacityRange.value)/100; // 0..1
   opVal.textContent = opacityRange.value;
 
+  if(!compareActive){
+    if(currentBaseLayer && currentBaseLayer.setOpacity) currentBaseLayer.setOpacity(1);
+    if(overlayLayer && overlayLayer.setOpacity) overlayLayer.setOpacity(1);
+    return;
+  }
+
   // Вариант 1: делать прозрачной ТЕКУЩУЮ (нижнюю) карту — верхняя плотная
   // Вариант 2: делать прозрачной НАКЛАДЫВАЕМУЮ (верхнюю) карту
   if(makeBaseTransparent){
