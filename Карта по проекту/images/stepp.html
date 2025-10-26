@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Карта 1939 года — степи</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <style>
+    #map {
+      width: 100vw;
+      height: 100vh;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <!-- Подключаем координаты степи -->
+  <script src="images/steppes/prikaspij/coords1.js"></script>
+
+  <script>
+    // Размеры карты (в пикселях)
+    const mapWidth = 7342;
+    const mapHeight = 6162;
+
+    // Создаем карту с простой системой координат
+    const map = L.map('map', {
+      crs: L.CRS.Simple,
+      minZoom: -4
+    });
+
+    // Границы изображения
+    const imageBounds = [[0, 0], [mapHeight, mapWidth]];
+
+    // Загружаем фон-карту
+    L.imageOverlay('images/map1939.jpg', imageBounds).addTo(map);
+
+    // Подгоняем карту под изображение
+    map.fitBounds(imageBounds);
+
+    // Проверяем, что coords1 загружен
+    if (typeof prikaspijCoords !== 'undefined') {
+      const polygon = L.polygon(prikaspijCoords, {
+        color: "green",
+        fillColor: "lime",
+        fillOpacity: 0.4
+      }).addTo(map);
+
+      polygon.bindPopup("Прикаспийская степь");
+
+      // Автоматический зум на степь
+      map.fitBounds(polygon.getBounds());
+    } else {
+      console.error("Координаты не найдены. Проверь файл coords1.js");
+    }
+  </script>
+</body>
+</html>

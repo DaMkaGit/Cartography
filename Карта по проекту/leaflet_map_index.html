@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<title>Литературная карта Казахстана — со степями</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+
+<style>
+  html,body { height:100%; margin:0; font-family:system-ui, sans-serif; }
+  #map { position:absolute; top:0; left:0; right:0; bottom:0; transition:left .22s ease; }
+  #epochSelector { position:absolute; top:10px; right:10px; z-index:1500; background:white; padding:6px 12px; border-radius:6px; border:1px solid #ccc; }
+  #steppeToggle { position:absolute; top:50px; right:10px; z-index:1500; background:#fff; padding:6px 10px; border-radius:6px; border:1px solid #ccc; cursor:pointer; }
+  #diagnostics { position:absolute; bottom:10px; right:10px; z-index:1500; background:white; padding:6px 12px; border-radius:6px; border:1px solid #ccc; font-size:12px; max-width:320px; }
+
+  /* Сравнение эпох */
+  #compareBtn { position:absolute; top:90px; right:10px; z-index:1500; background:#1976d2; color:#fff; padding:8px 10px; border-radius:8px; border:1px solid #125ea8; cursor:pointer; font-weight:700; }
+  #comparePanel { position:absolute; top:130px; right:10px; z-index:1500; background:#fff; border:1px solid #ccc; border-radius:8px; padding:10px; width:280px; box-shadow:0 8px 24px rgba(0,0,0,.12); display:none; }
+  #comparePanel .row { margin:6px 0; font-size:14px; }
+  #comparePanel select, #comparePanel input[type=range] { width:100%; }
+  #comparePanel .controls { display:flex; gap:8px; margin-top:8px; }
+  #compareDisable { flex:1; background:#c62828; color:#fff; border:none; padding:6px 8px; border-radius:6px; cursor:pointer; }
+  #swapOpacity { flex:1; background:#eee; border:1px solid #bbb; padding:6px 8px; border-radius:6px; cursor:pointer; }
+
+  .city-marker { border:2px solid white; border-radius:50%; display:inline-block; box-sizing:border-box; }
+  .marker-large { background:#d32f2f; width:24px; height:24px; }
+  .marker-medium { background:#1976d2; width:18px; height:18px; }
+  .marker-small { background:#388e3c; width:12px; height:12px; }
+
+  .popup-city { width:300px; }
+  .popup-city .city-photo { width:100%; height:140px; object-fit:cover; border-radius:6px; border:1px solid #ddd; display:block; cursor:zoom-in; transition:transform .18s ease; }
+  .popup-city h3 { margin:8px 0 6px 0; font-size:16px; text-align:center; }
+  .poet-item { display:flex; align-items:center; margin:6px 0; padding:6px; border-radius:6px; background:#f9f9f9; cursor:pointer; transition:background .12s; }
+  .poet-item:hover { background:#ececec; }
+  .poet-item img { width:40px; height:40px; border-radius:50%; margin-right:8px; object-fit:cover; border:1px solid #ccc; }
+
+  #poetModal { display:none; position:fixed; top:0; left:0; width:420px; height:100%; z-index:1600; background:linear-gradient(180deg,#fff,#fcfcfc); box-shadow:2px 0 18px rgba(0,0,0,0.22); overflow-y:auto; padding:18px; }
+  #poetModal .close { position:fixed; top:12px; left:12px; font-size:26px; cursor:pointer; color:#c62828; font-weight:800; }
+  .poet-block { margin:36px 0 18px 0; padding:12px; border-radius:8px; background:#fff; border-left:6px solid #1976d2; box-shadow:0 1px 6px rgba(0,0,0,0.06); }
+  .poet-block h2 { margin:0 0 8px 0; color:#d32f2f; font-size:20px; }
+  .poet-block img { width:120px; height:120px; float:right; margin-left:12px; border-radius:50%; object-fit:cover; border:1px solid #ddd; }
+  .poet-block ul { margin:6px 0 0 0; padding-left:18px; }
+  .poet-block p { margin:8px 0; color:#222; line-height:1.35; }
+  .poet-block .label { display:inline-block; width:110px; font-weight:600; vertical-align:top; color:#333; }
+  .poet-block .quotes { font-style:italic; color:#b45a00; margin-top:8px; }
+  .poet-block .facts { color:#333; }
+
+  #cityImageModal { display:none; position:fixed; inset:0; z-index:1800; background:rgba(0,0,0,0.7); align-items:center; justify-content:center; }
+  #cityImageModal img { max-width:90%; max-height:90%; border-radius:8px; box-shadow:0 10px 40px rgba(0,0,0,0.6); cursor:zoom-out; transition:transform .18s; }
+
+  #poetsPanelBtn { position:fixed; right:12px; bottom:12px; z-index:1500; background:#1976d2; color:white; padding:10px 12px; border-radius:8px; cursor:pointer; box-shadow:0 4px 10px rgba(0,0,0,0.15); font-weight:700; }
+  #poetsListPopup { display:none; position:fixed; right:12px; bottom:56px; z-index:1500; width:300px; max-height:340px; overflow:auto; background:#fff; border-radius:8px; border:1px solid #ccc; box-shadow:0 8px 24px rgba(0,0,0,0.15); padding:8px; }
+  #poetsListPopup .poet-row { padding:8px; border-bottom:1px solid #f0f0f0; cursor:pointer; display:flex; align-items:center; }
+  #poetsListPopup .poet-row img { width:36px;height:36px;border-radius:50%;margin-right:10px;object-fit:cover;border:1px solid #ddd; }
+  #poetsListPopup .poet-row:hover { background:#fafafa; }
+
+  .legend { position:absolute; bottom:90px; left:10px; z-index:1400; background:white; padding:8px; border-radius:6px; border:1px solid #ccc; font-size:13px; }
+  .legend div { display:flex; align-items:center; margin-bottom:6px; }
+  .legend span { display:inline-block; width:16px; height:16px; margin-right:8px; border-radius:50%; border:2px solid white; }
+</style>
+</head>
+<body>
+
+<select id="epochSelector">
+  <option value="xix">XIX век</option>
+  <option value="xx">XX век</option>
+  <option value="modern">XXI век</option>
+</select>
+
+<button id="steppeToggle">Показать степи</button>
+<button id="compareBtn">Сравнить эпохи</button>
+<div id="comparePanel">
+  <div class="row"><b>Наложить эпоху:</b></div>
+  <div class="row">
+    <select id="overlayEpoch"></select>
+  </div>
+  <div class="row">
+    <label for="opacityRange">Прозрачность текущей карты (<span id="opVal">40</span>%)</label>
+    <input id="opacityRange" type="range" min="0" max="100" step="1" value="40">
+  </div>
+  <div class="controls">
+    <button id="swapOpacity" title="Менять местами: делать прозрачной верхнюю/нижнюю">Поменять местами</button>
+    <button id="compareDisable">Выключить</button>
+  </div>
+</div>
+
+<div id="map"></div>
+<div id="diagnostics">Диагностика: загрузка XIX карты…</div>
+
+<div id="poetModal" aria-hidden="true">
+  <span class="close" title="Закрыть">&times;</span>
+  <div id="poetContent"></div>
+</div>
+
+<div id="cityImageModal"><img id="cityImageLarge" src="" alt="Фото города"></div>
+
+<div id="poetsPanelBtn">Поэты 19 века</div>
+<div id="poetsListPopup"></div>
+
+<div class="legend">
+  <div><span style="background:#d32f2f"></span> Крупные города</div>
+  <div><span style="background:#1976d2"></span> Средние города</div>
+  <div><span style="background:#388e3c"></span> Малые города</div>
+</div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script>
+/* ====== Данные ====== */
+const poetDetails = {
+  "А.С. Пушкин": { portrait:"images/pushkin.png", works:[{title:"Осада Оренбурга / 'История Пугачева'", year:1834}], location:["Оренбург (сентябрь 1833)","Уральск (сентябрь 1833)"], facts:["Несколько дней в Оренбурге в 1833 г. при работе над 'Историей Пугачева'."], quotes:["«...весь этот вид очень приятен для глаз... степь сливается с небом...»","«Течение реки Яика ... отделенное от внутренних российских городов не малым степным и пустым расстоянием»"] },
+  "В.А. Жуковский": { portrait:"images/zhukovsky.png", works:[{title:"Дневник (записи)", year:1837}], location:["Оренбург (июнь 1837)","Уральск (июнь 1837)","Бузулук (июнь 1837)"], facts:["Сопровождал путешествие; делал зарисовки."], quotes:["«Киргизское кочевье... Чай в кибитке.»","«Переезд... Степь сменяется небольшими возвышенностями.»"] },
+  "В.И. Даль": { portrait:"images/dal.png", works:[{title:"'Уральский казак'", year:1842}], location:["Оренбургская губерния","Гурьев (Атырау)"], facts:["Этнограф; изучал язык и быт."], quotes:["«Пришло жаркое, знойное лето...»"] },
+  "А.Н. Плещеев": { portrait:"images/pleshcheev.png", works:[{title:"'В степи'", year:1856}], location:["Оренбург (1850-е)","Уральск (1850-е)"], facts:["Участвовал в походах по степи."], quotes:["«О степь унылая, простор твой необъятный...»"] },
+  "Иван Шухов": { portrait:"images/shukhov.png", works:[{title:"'Горькая линия'", year:1930}], location:["Пресновка (1930-е)","Павлодар (1930-е)"], facts:["Писал очерки о степи."], quotes:["«Простор степи... казался бесконечным...»"] },
+  "Николай Анов": { portrait:"images/anov.png", works:[{title:"'Ак-Мечеть'", year:1950}], location:["Усть-Каменогорск (1920-е)","Алматы (послевоенно)","Семипалатинск (1920-е)","Кызылорда (1950-е)"], facts:["Писатель, жил в Казахстане."], quotes:["«Пища мужчины в степи, на воле...»"] },
+  "Всеволод Иванов": { portrait:"images/ivanov.png", works:[{title:"Повести (1920-е)", year:1926}], location:["Уральск (1926+)","Павлодар (1920-е)"], facts:["Исследовал Прикаспий."], quotes:["Отрывки о прикаспийских ландшафтах."] },
+  "Герольд Бельгер": { portrait:"images/belger.png", works:[{title:"Проза о степи", year:2010}], location:["Алматы","Павлодар"], facts:[], quotes:[] },
+  "Бахытжан Канапьянов": { portrait:"images/kanapyanov.png", works:[{title:"Сборник",year:2005}], location:["Кокшетау","Алматы"], facts:[], quotes:[] },
+  "Надежда Чернова": { portrait:"images/chernova.png", works:[{title:"Проза",year:2012}], location:["Баянаул","Алматы"], facts:[], quotes:[] },
+  "И. Крылов": { portrait:"images/krylov.png", works:[{title:"Басни",year:1810}], location:[], facts:[], quotes:[] },
+  "Максим Зверев": { portrait:"images/zverev.png", works:[{title:"Проза",year:1930}], location:[], facts:[], quotes:[] },
+  "Дмитрий Снегин": { portrait:"images/snegin.png", works:[{title:"Стихи",year:2000}], location:[], facts:[], quotes:[] },
+  "Павел Васильев": { portrait:"images/vasiliev.png", works:[{title:"Стихи",year:1990}], location:[], facts:[], quotes:[] }
+};
+
+const poetsByEpoch = {
+  xix:{
+    "Уральск":[ {name:"А.С. Пушкин", work:"Евгений Онегин", portrait:"images/pushkin.png"}, {name:"В.А. Жуковский", work:"Дневник", portrait:"images/zhukovsky.png"}, {name:"В.И. Даль", work:"Толковый словарь", portrait:"images/dal.png"}, {name:"Л.Н. Толстой", work:"Война и мир", portrait:"images/tolstoy.png"} ],
+    "Оренбург":[ {name:"А.С. Пушкин", work:"История Пугачева", portrait:"images/pushkin.png"}, {name:"В.И. Даль", work:"Этнографические заметки", portrait:"images/dal.png"}, {name:"А.Н. Плещеев", work:"Стихи", portrait:"images/pleshcheev.png"}, {name:"И. Крылов", work:"Басни", portrait:"images/krylov.png"} ]
+  },
+  xx:{
+    "Алматы":[ {name:"Максим Зверев", work:"Проза", portrait:"images/zverev.png"}, {name:"Дмитрий Снегин", work:"Стихи", portrait:"images/snegin.png"}, {name:"Николай Анов", work:"Ак-Мечеть", portrait:"images/anov.png"}, {name:"Иван Шухов", work:"Горькая линия", portrait:"images/shukhov.png"} ],
+    "Павлодар":[ {name:"Павел Васильев", work:"Стихи", portrait:"images/vasiliev.png"}, {name:"Всеволод Иванов", work:"Повести", portrait:"images/ivanov.png"} ],
+    "Семипалатинск":[ {name:"Максим Зверев", work:"Проза", portrait:"images/zverev.png"}, {name:"Николай Анов", work:"Сборники", portrait:"images/anov.png"} ],
+    "Кызылорда":[ {name:"Николай Анов", work:"Сборники", portrait:"images/anov.png"} ],
+    "Усть-Каменогорск":[ {name:"Николай Анов", work:"Сборники", portrait:"images/anov.png"} ],
+    "Дарьинск":[ {name:"М.А. Шолохов", work:"Тихий Дон", portrait:"images/sholokhov.png"} ],
+    "Пресновка":[ {name:"Иван Шухов", work:"Горькая линия", portrait:"images/shukhov.png"} ],
+    "Уральск":[ {name:"Всеволод Иванов", work:"Повести", portrait:"images/ivanov.png"} ]
+  },
+  modern:{
+    "Алматы":[ {name:"Герольд Бельгер", work:"Проза о степи", portrait:"images/belger.png"}, {name:"Бахытжан Канапьянов", work:"Стихи", portrait:"images/kanapyanov.png"}, {name:"Надежда Чернова", work:"Проза", portrait:"images/chernova.png"} ],
+    "Павлодар":[ {name:"Герольд Бельгер", work:"Проза", portrait:"images/belger.png"} ],
+    "Кокшетау":[ {name:"Бахытжан Канапьянов", work:"Стихи", portrait:"images/kanapyanov.png"} ],
+    "Баянаул":[ {name:"Надежда Чернова", work:"Проза", portrait:"images/chernova.png"} ]
+  }
+};
+
+const cityCategories = { large:["Астана","Алматы","Оренбург","Уральск","Семипалатинск"], medium:["Павлодар","Усть-Каменогорск","Кызылорда","Кокшетау"], small:["Дарьинск","Пресновка","Баянаул"] };
+
+const cityCoordsByEpoch = {
+  xix: { "Уральск":[53.70,65.10], "Оренбург":[54.00,67.75] },
+  xx:  { "Алматы":[45.15,81.5], "Павлодар":[51.27,80.26], "Семипалатинск":[50.25,82.60], "Кызылорда":[45.95,73.10], "Усть-Каменогорск":[50.16,84.10], "Дарьинск":[51.00,64.64], "Пресновка":[52.54,74.2], "Уральск":[51.18,66.95] },
+  modern: { "Алматы":[43.25,76.9], "Павлодар":[52.287,76.973], "Кокшетау":[53.2833,69.3833], "Баянаул":[50.7639,75.7075] }
+};
+
+const cityBasenames = { "Уральск":"Uralsk","Оренбург":"Orenburg","Алматы":"Almaty","Павлодар":"Pavlodar","Семипалатинск":"Semipalatinsk","Кызылорда":"Kyzylorda","Усть-Каменогорск":"UstKamenogorsk","Дарьинск":"Daryinsk","Пресновка":"Presnovka","Астана":"Astana","Кокшетау":"Kokshetau","Баянаул":"Bayanaul" };
+function getCityImagePath(city, epoch) {
+  const suffix = epoch === "xix" ? "xix" : (epoch === "xx" ? "xx" : "xxi");
+  const base = cityBasenames[city] || city.replace(/\s+/g,'');
+  return `images/${base}_${suffix}.png`;
+}
+
+/* ====== Слои карт ====== */
+const xixBounds = [[40,60],[56,88]];
+const xxBounds  = [[40,60],[56,88]];
+
+const xixLayer = L.imageOverlay("images/map1851.jpg", xixBounds);
+const xxLayer  = L.imageOverlay("images/map1939.jpg", xxBounds);
+const modernLayer = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution:'&copy; OpenStreetMap' });
+
+/* ====== Карта ====== */
+const map = L.map("map", { center:[48,70], zoom:5, layers:[] });
+let currentBaseLayer = null;
+const markersLayer = L.layerGroup().addTo(map);
+
+/* Прелоад XIX-растра */
+(function initBase(){
+  const img = new Image();
+  img.onload = () => {
+    currentBaseLayer = xixLayer; xixLayer.addTo(map);
+    try{ map.fitBounds(xixBounds); } catch(e){ map.setView([48,70],5); }
+    document.getElementById('diagnostics').innerText = "Диагностика: карта XIX загружена (map1851.jpg)";
+  };
+  img.onerror = () => {
+    currentBaseLayer = modernLayer; modernLayer.addTo(map);
+    map.setView([48,70],5);
+    document.getElementById('diagnostics').innerText = "Диагностика: не найден images/map1851.jpg — показана подложка OSM";
+  };
+  img.src = "images/map1851.jpg";
+})();
+
+/* ====== Утилиты ====== */
+function extractCityNamesFromEntry(entry){
+  const beforeParen = (entry||"").split('(')[0];
+  return beforeParen.split(/\/|,|;| и /i).map(s=>s.trim()).filter(Boolean);
+}
+function flyToCity(city){
+  if(!city) return;
+  const epoch = document.getElementById("epochSelector").value;
+  let coords = (cityCoordsByEpoch[epoch] && cityCoordsByEpoch[epoch][city]) ? cityCoordsByEpoch[epoch][city] : null;
+  if(!coords){
+    for(const ep of Object.keys(cityCoordsByEpoch)){
+      if(cityCoordsByEpoch[ep][city]){ coords = cityCoordsByEpoch[ep][city]; break; }
+    }
+  }
+  if(coords) map.flyTo(coords, 9, {duration:1.0});
+}
+
+/* ====== Попапы городов ====== */
+map.on("popupopen", function(e){
+  try{
+    const popupEl = e.popup.getElement();
+    popupEl.querySelectorAll(".poet-item").forEach(item=>{
+      item.onclick = function(){
+        const name = this.dataset.name;
+        const d = poetDetails[name];
+        if(d && d.location && d.location.length){
+          const extracted = extractCityNamesFromEntry(d.location[0]);
+          if(extracted.length) flyToCity(extracted[0]);
+        }
+        openModalFill(name);
+      };
+    });
+    const cityImg = popupEl.querySelector(".city-photo");
+    if(cityImg){ cityImg.onclick = () => openCityImageLarge(cityImg.dataset.large || cityImg.src); }
+  }catch(err){}
+});
+
+/* ====== Лайтбокс фото города ====== */
+const cityImageModal = document.getElementById("cityImageModal");
+const cityImageLarge = document.getElementById("cityImageLarge");
+function openCityImageLarge(src){ cityImageLarge.src = src; cityImageModal.style.display = "flex"; }
+cityImageModal.onclick = function(){ cityImageModal.style.display="none"; cityImageLarge.src=""; };
+
+/* ====== Модалка поэта ====== */
+const modal = document.getElementById("poetModal");
+const modalClose = document.querySelector("#poetModal .close");
+const poetContent = document.getElementById("poetContent");
+const mapContainer = document.getElementById("map");
+modalClose.onclick = closeModal;
+
+function openModalFill(name){
+  const d = poetDetails[name];
+  if(!d){
+    poetContent.innerHTML = `<div class="poet-block"><h2>${name}</h2><p>Информация не найдена.</p></div>`;
+  } else {
+    const works = (d.works||[]).map(w=>`<li>${w.title}${w.year?` (${w.year})`:''}</li>`).join("") || "<li>—</li>";
+    const locs = (d.location||[]).map(l=>{
+      const cities = extractCityNamesFromEntry(l);
+      if(cities.length>1){
+        return cities.map(c=>`<li><a href="#" class="city-link" data-city="${c}">${c}</a></li>`).join("");
+      } else {
+        const cityOnly = cities[0]||l.split('(')[0].trim();
+        return `<li><a href="#" class="city-link" data-city="${cityOnly}">${l}</a></li>`;
+      }
+    }).join("") || "<li>—</li>";
+    const facts = (d.facts||[]).map(f=>`<li>${f}</li>`).join("") || "<li>—</li>";
+    const quotes = (d.quotes||[]).map(q=>`<li>${q}</li>`).join("") || "<li>—</li>";
+
+    poetContent.innerHTML = `
+      <div class="poet-block">
+        <h2>${name}</h2>
+        <img src="${d.portrait||'images/placeholder.png'}" onerror="this.src='images/placeholder.png'">
+        <p><span class="label">Произведения:</span><ul>${works}</ul></p>
+        <p><span class="label">Место/время:</span><ul>${locs}</ul></p>
+        <p class="facts"><span class="label">Факты:</span><ul>${facts}</ul></p>
+        <div class="quotes"><span class="label">Цитаты о степи:</span><ul>${quotes}</ul></div>
+      </div>`;
+    poetContent.querySelectorAll(".city-link").forEach(a=>{
+      a.onclick = ev => { ev.preventDefault(); flyToCity(a.dataset.city); };
+    });
+  }
+  modal.style.display = "block";
+  modal.setAttribute("aria-hidden","false");
+  mapContainer.style.left = "420px";
+  setTimeout(()=>map.invalidateSize(),260);
+}
+function closeModal(){
+  modal.style.display = "none";
+  modal.setAttribute("aria-hidden","true");
+  mapContainer.style.left = "0";
+  setTimeout(()=>map.invalidateSize(),260);
+}
+
+/* ====== Маркеры городов ====== */
+function addCities(epoch){
+  markersLayer.clearLayers();
+  const epochData = poetsByEpoch[epoch] || {};
+  for(const city in epochData){
+    const poets = epochData[city];
+    const coords = (cityCoordsByEpoch[epoch] && cityCoordsByEpoch[epoch][city]) ? cityCoordsByEpoch[epoch][city] : [48,70];
+    const imgPath = getCityImagePath(city, epoch);
+    let popupContent = `<div class="popup-city">
+                          <img class="city-photo" src="${imgPath}" data-large="${imgPath}" onerror="this.src='images/placeholder.png'"/>
+                          <h3>${city}</h3>
+                          <p style="margin:6px 0 4px 0;font-size:13px;"><b>Поэты в этом городе:</b></p>`;
+    poets.forEach(p=>{
+      popupContent += `<div class="poet-item" data-name="${p.name}" data-portrait="${p.portrait}">
+                        <img src="${p.portrait}" onerror="this.src='images/placeholder.png'">
+                        <div class="poet-info"><b>${p.name}</b><br/><i style="font-size:12px;">${p.work||''}</i></div>
+                      </div>`;
+    });
+    popupContent += `</div>`;
+    let cls = "marker-medium";
+    if(cityCategories.large.includes(city)) cls = "marker-large";
+    else if(cityCategories.small.includes(city)) cls = "marker-small";
+    const iconHtml = `<div class="city-marker ${cls}"></div>`;
+    const marker = L.marker(coords, {
+      icon: L.divIcon({ html: iconHtml, className: '', iconSize: [30,30], iconAnchor: [15,15] })
+    }).bindPopup(popupContent, {maxWidth:340}).bindTooltip(city,{permanent:false});
+    markersLayer.addLayer(marker);
+  }
+}
+addCities("xix");
+
+/* ====== Переключение эпох ====== */
+document.getElementById("epochSelector").addEventListener("change", function(e){
+  const val = e.target.value;
+  if(currentBaseLayer && map.hasLayer(currentBaseLayer)) map.removeLayer(currentBaseLayer);
+
+  if(val === "xix"){ currentBaseLayer = xixLayer; xixLayer.addTo(map); try{ map.fitBounds(xixBounds); }catch(err){ map.flyTo([48,70],5,{duration:0.8}); } }
+  else if(val === "xx"){ currentBaseLayer = xxLayer; xxLayer.addTo(map); try{ map.fitBounds(xxBounds); }catch(err){ map.flyTo([48,70],5,{duration:0.8}); } }
+  else { currentBaseLayer = modernLayer; modernLayer.addTo(map); map.flyTo([48,70],5,{duration:0.8}); }
+
+  addCities(val);
+  updatePoetsPanelLabel();
+  document.getElementById("diagnostics").innerText = "Диагностика: карта " + val + " активна";
+
+  if(steppeVisible){ showSteppeForCurrentEpoch(); }
+  refreshCompareOptions(); // обновим варианты для сравнения
+  applyOpacity();          // сохранить прозрачность в новом состоянии
+});
+
+/* ====== Панель «Поэты ... века» ====== */
+const poetsPanelBtn = document.getElementById("poetsPanelBtn");
+const poetsListPopup = document.getElementById("poetsListPopup");
+function updatePoetsPanelLabel(){ const epoch = document.getElementById("epochSelector").value; const label = epoch === "xix" ? "19" : (epoch === "xx" ? "20" : "21"); poetsPanelBtn.innerText = `Поэты ${label} века`; }
+function buildPoetsList(){
+  const epoch = document.getElementById("epochSelector").value;
+  const epochData = poetsByEpoch[epoch] || {};
+  const seen = new Set(); let rows = "";
+  for(const city in epochData){
+    for(const p of epochData[city]){
+      if(seen.has(p.name)) continue;
+      seen.add(p.name);
+      const portrait = p.portrait || 'images/placeholder.png';
+      rows += `<div class="poet-row" data-name="${p.name}">
+                 <img src="${portrait}" onerror="this.src='images/placeholder.png'">
+                 <div><b>${p.name}</b><div style="font-size:12px;color:#666">${p.work||''}</div></div>
+               </div>`;
+    }
+  }
+  poetsListPopup.innerHTML = rows || "<div style='padding:10px;color:#666'>Нет данных.</div>";
+  poetsListPopup.querySelectorAll(".poet-row").forEach(r=>{
+    r.onclick = function(){
+      const name = this.dataset.name;
+      const d = poetDetails[name];
+      if(d && d.location && d.location.length){
+        const extracted = extractCityNamesFromEntry(d.location[0]);
+        if(extracted.length) flyToCity(extracted[0]);
+      }
+      openModalFill(name);
+      poetsListPopup.style.display = "none";
+    };
+  });
+}
+poetsPanelBtn.onclick = function(){
+  if(poetsListPopup.style.display === "block"){ poetsListPopup.style.display = "none"; return; }
+  updatePoetsPanelLabel();
+  buildPoetsList();
+  poetsListPopup.style.display = "block";
+};
+document.addEventListener("click", function(e){
+  if(!poetsListPopup.contains(e.target) && !poetsPanelBtn.contains(e.target)) poetsListPopup.style.display = "none";
+});
+updatePoetsPanelLabel();
+
+/* ====== ESC ====== */
+window.addEventListener("keydown", (ev) => {
+  if(ev.key === "Escape"){
+    closeModal();
+    poetsListPopup.style.display='none';
+    cityImageModal.style.display='none';
+  }
+});
+
+/* ======================================================================
+   СТЕПЬ (кликабельная) — только для XX века
+   ====================================================================== */
+const caspianXXLatLngs = [[46.460566,64.671021],[46.502173,64.841309],[46.471916,65.028076],[46.464349,65.247803],[46.415139,65.544434],[46.320378,65.76416],[46.54375,65.76416],[46.668287,65.747681],[46.852678,66.033325],[47.010226,66.011353],[47.171044,65.895996],[47.294134,65.939941],[47.535747,66.022339],[47.643186,65.874023],[47.750405,65.917969],[47.934747,65.78064],[48.056054,65.544434],[48.111099,65.76416],[48.217353,65.571899],[48.378145,65.467529],[48.491127,65.467529],[48.752567,65.445557],[48.701838,65.110474],[48.803246,64.91272],[48.951366,65.039063],[49.023461,64.819336],[49.217597,64.835815],[49.21042,64.58313],[49.34302,64.440308],[49.468124,64.291992],[49.589349,64.489746],[49.968889,64.286499],[50.071244,64.176636],[49.592909,64.220581],[49.553726,63.92395],[49.614269,63.71521],[49.646291,63.336182],[49.855693,63.226318],[49.767074,62.96814],[49.713825,62.704468],[49.749331,62.330933],[49.585787,62.655029],[49.450272,62.808838],[49.325122,62.814331],[49.239121,62.561646],[49.25705,62.380371],[49.246293,62.243042],[49.296472,61.990356],[49.407399,61.891479],[49.48597,61.66626],[49.592909,61.473999],[49.72803,61.380615],[49.855693,61.188354],[49.869857,61.045532],[49.784811,61.089478],[49.731581,61.188354],[49.681847,61.029053],[49.624946,61.105957],[49.624946,61.243286],[49.50381,61.226807],[49.432413,61.408081],[49.339441,61.534424],[49.217597,61.468506],[49.08466,61.484985],[48.926109,61.622314],[48.752567,61.693726],[48.585692,61.792603],[48.410972,61.880493],[48.301467,61.885986],[48.294158,61.671753],[48.330691,61.539917],[48.239309,61.594849],[48.162421,61.693726],[48.147763,61.825562],[48.184401,61.957397],[48.195387,62.177124],[48.188063,62.352905],[48.169749,62.627563],[48.221013,62.830811],[48.279537,62.990112],[48.312428,63.237305],[48.407326,63.325195],[48.352599,63.500977],[48.301467,63.61084],[48.231991,63.83606],[48.144098,63.858032],[48.180739,63.995361],[48.191726,64.127197],[48.133101,64.401855],[48.056054,64.588623],[47.942107,64.736938],[47.813155,64.819336],[47.706065,64.907227],[47.580231,64.967651],[47.44295,65.066528],[47.331377,65.044556],[47.23076,64.973145],[47.122476,65.011597],[47.062638,65.187378],[46.950262,65.258789],[46.800059,65.341187],[46.702202,65.456543],[46.660747,65.335693],[46.739861,65.187378],[46.634351,65.231323],[46.532414,65.308228],[46.528635,65.148926],[46.604167,65.033569],[46.566414,64.830322],[46.528635,64.692993]];
+
+function pointInPolygon(latlng, polyLatLngs) {
+  const x = latlng[1], y = latlng[0];
+  let inside = false;
+  for (let i = 0, j = polyLatLngs.length - 1; i < polyLatLngs.length; j = i++) {
+    const xi = polyLatLngs[i][1], yi = polyLatLngs[i][0];
+    const xj = polyLatLngs[j][1], yj = polyLatLngs[j][0];
+    const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi + 0.0) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+let steppeLayerGroup = L.layerGroup();
+let steppeVisible = false;
+const steppeMetaByEpoch = { xx:  { name:"Прикаспийская степь (XX век)", photo:"images/steppe_xx.png", desc:"Регион Прикаспийской степи по состоянию на первую половину XX века." } };
+
+function buildSteppeForEpoch(epoch){
+  if(epoch !== 'xx') return null;
+  const poly = L.polygon(caspianXXLatLngs, { color:"#ff9800", fillColor:"#ffcc80", fillOpacity:0.25, weight:2 });
+  poly.on("mouseover", ()=>poly.setStyle({fillOpacity:0.45}));
+  poly.on("mouseout", ()=>poly.setStyle({fillOpacity:0.25}));
+  poly.on("click", ()=>onSteppeClick(poly, epoch));
+  return poly;
+}
+function onSteppeClick(polygon, epoch){
+  const latlngs = polygon.getLatLngs()[0].map(ll=>[ll.lat, ll.lng]);
+  const citiesInside = [];
+  for(const cityName of Object.keys(cityCoordsByEpoch.xx)){
+    const coords = cityCoordsByEpoch.xx[cityName];
+    if(coords && pointInPolygon(coords, latlngs)) citiesInside.push(cityName);
+  }
+  const authors = [];
+  for(const name of Object.keys(poetDetails)){
+    const d = poetDetails[name];
+    if(!d || !d.location) continue;
+    const authorCities = d.location.flatMap(entry => extractCityNamesFromEntry(entry));
+    const intersects = authorCities.some(c => citiesInside.includes(c));
+    if(intersects){
+      const hasQuotes = (d.quotes && d.quotes.length) ? " — есть цитаты" : "";
+      authors.push({ name, cities: authorCities.filter(c=>citiesInside.includes(c)), quotes: d.quotes||[], facts: d.facts||[], flag: hasQuotes });
+    }
+  }
+  const meta = steppeMetaByEpoch[epoch] || {name:"Степь", photo:"images/placeholder.png"};
+  let html = `<div style="text-align:center">
+                <h2>${meta.name}</h2>
+                <img src="${meta.photo}" onerror="this.src='images/placeholder.png'"
+                     style="width:100%;height:180px;object-fit:cover;border-radius:6px;border:1px solid #ddd;margin-bottom:8px;">
+              </div>`;
+  html += `<p><b>Города в пределах области:</b></p>`;
+  html += citiesInside.length
+    ? `<ul>${citiesInside.map(c=>`<li><a href="#" class="steppe-city-link" data-city="${c}">${c}</a></li>`).join("")}</ul>`
+    : "<p>Нет отмеченных городов в этой области.</p>";
+
+  html += `<p><b>Авторы, связанные с регионом:</b></p>`;
+  if(authors.length){
+    html += `<ul>`;
+    authors.forEach(a=>{
+      html += `<li><b>${a.name}</b>${a.flag} — места: ${a.cities.join(", ")}
+                 <ul style="margin-top:6px;">
+                   ${(a.quotes||[]).slice(0,4).map(q=>`<li style="font-style:italic;color:#b45a00;">${q}</li>`).join("")}
+                   ${(a.facts||[]).slice(0,2).map(f=>`<li>${f}</li>`).join("")}
+                 </ul>
+               </li>`;
+    });
+    html += `</ul>`;
+  } else {
+    html += "<p>Авторов с привязкой к этой области не найдено в текущих данных.</p>";
+  }
+
+  poetContent.innerHTML = `<div class="poet-block">${html}</div>`;
+  modal.style.display = "block";
+  modal.setAttribute("aria-hidden","false");
+  mapContainer.style.left = "420px";
+  setTimeout(()=>map.invalidateSize(),260);
+
+  poetContent.querySelectorAll(".steppe-city-link").forEach(a=>{
+    a.onclick = ev => { ev.preventDefault(); closeModal(); flyToCity(a.dataset.city); };
+  });
+}
+const steppeToggleBtn = document.getElementById("steppeToggle");
+steppeToggleBtn.onclick = function(){
+  const epoch = document.getElementById("epochSelector").value;
+  if(epoch !== 'xx'){
+    alert('Степи доступны только на карте XX века (1939 г.). Переключите эпоху.');
+    return;
+  }
+  steppeVisible = !steppeVisible;
+  steppeToggleBtn.innerText = steppeVisible ? "Скрыть степи" : "Показать степи";
+  if(steppeVisible) showSteppeForCurrentEpoch();
+  else hideSteppe();
+};
+function showSteppeForCurrentEpoch(){
+  steppeLayerGroup.clearLayers();
+  const epoch = document.getElementById("epochSelector").value;
+  const poly = buildSteppeForEpoch(epoch);
+  if(poly){
+    steppeLayerGroup.addLayer(poly);
+    steppeLayerGroup.addTo(map);
+    try{ map.fitBounds(poly.getBounds(), {padding:[30,30]}); }catch(e){}
+  }
+}
+function hideSteppe(){ if(steppeLayerGroup) map.removeLayer(steppeLayerGroup); }
+
+/* ======================================================================
+   РЕЖИМ «СРАВНЕНИЕ ЭПОХ»
+   ====================================================================== */
+const compareBtn = document.getElementById('compareBtn');
+const comparePanel = document.getElementById('comparePanel');
+const overlayEpochSel = document.getElementById('overlayEpoch');
+const opacityRange = document.getElementById('opacityRange');
+const opVal = document.getElementById('opVal');
+const swapBtn = document.getElementById('swapOpacity');
+const disableBtn = document.getElementById('compareDisable');
+
+let compareActive = false;
+let overlayLayer = null;
+let makeBaseTransparent = true; // по умолчанию «как у Rumsey» — регулируем прозрачность нижней/текущей карты
+
+function getCurrentEpoch(){ return document.getElementById('epochSelector').value; }
+function otherEpochs(ep){
+  return ['xix','xx','modern'].filter(e => e !== ep);
+}
+function getNewLayerForEpoch(ep){
+  if(ep === 'xix')   return L.imageOverlay("images/map1851.jpg", xixBounds);
+  if(ep === 'xx')    return L.imageOverlay("images/map1939.jpg", xxBounds);
+  return L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution:'&copy; OpenStreetMap' });
+}
+function refreshCompareOptions(){
+  const cur = getCurrentEpoch();
+  const opts = otherEpochs(cur);
+  overlayEpochSel.innerHTML = opts.map(o => {
+    const title = o==='xix'?'XIX век':(o==='xx'?'XX век':'XXI век');
+    return `<option value="${o}">${title}</option>`;
+  }).join('');
+}
+
+function enableCompare(){
+  if(compareActive) return;
+  compareActive = true;
+  comparePanel.style.display = 'block';
+  refreshCompareOptions();
+
+  // Создаём верхний слой (overlay) как «другую эпоху»
+  const chosen = overlayEpochSel.value;
+  if(overlayLayer) { try{ map.removeLayer(overlayLayer); }catch(e){} overlayLayer = null; }
+  overlayLayer = getNewLayerForEpoch(chosen);
+  overlayLayer.addTo(map); // верхний слой
+  applyOpacity();
+}
+function disableCompare(){
+  compareActive = false;
+  comparePanel.style.display = 'none';
+  if(overlayLayer){ try{ map.removeLayer(overlayLayer); }catch(e){} overlayLayer = null; }
+  // Вернём полную непрозрачность базового и оверлея (если вдруг что-то осталось)
+  if(currentBaseLayer && currentBaseLayer.setOpacity) currentBaseLayer.setOpacity(1);
+}
+
+function applyOpacity(){
+  const val = Number(opacityRange.value)/100; // 0..1
+  opVal.textContent = opacityRange.value;
+
+  // Вариант 1: делать прозрачной ТЕКУЩУЮ (нижнюю) карту — верхняя плотная
+  // Вариант 2: делать прозрачной НАКЛАДЫВАЕМУЮ (верхнюю) карту
+  if(makeBaseTransparent){
+    if(currentBaseLayer && currentBaseLayer.setOpacity) currentBaseLayer.setOpacity(1 - val);
+    if(overlayLayer && overlayLayer.setOpacity) overlayLayer.setOpacity(1);
+  }else{
+    if(currentBaseLayer && currentBaseLayer.setOpacity) currentBaseLayer.setOpacity(1);
+    if(overlayLayer && overlayLayer.setOpacity) overlayLayer.setOpacity(1 - val);
+  }
+}
+
+// пересоздаём overlay при смене выбора эпохи
+overlayEpochSel && overlayEpochSel.addEventListener('change', ()=>{
+  if(!compareActive) return;
+  const chosen = overlayEpochSel.value;
+  if(overlayLayer){ try{ map.removeLayer(overlayLayer); }catch(e){} overlayLayer = null; }
+  overlayLayer = getNewLayerForEpoch(chosen);
+  overlayLayer.addTo(map);
+  applyOpacity();
+});
+
+// обработчики
+compareBtn.onclick = () => {
+  if(compareActive){ disableCompare(); }
+  else { enableCompare(); }
+};
+opacityRange.oninput = applyOpacity;
+swapBtn.onclick = () => { makeBaseTransparent = !makeBaseTransparent; applyOpacity(); };
+disableBtn.onclick = () => { disableCompare(); };
+
+// при зуме/панорамировании всё ок, а при смене эпох — пересоздаём overlay, чтобы bbox совпадал
+map.on('baselayerchange', ()=>{ if(compareActive){ enableCompare(); } });
+
+/* При первой загрузке подготовим селект сравнения */
+refreshCompareOptions();
+</script>
+</body>
+</html>
